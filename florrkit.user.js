@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Florrkit - Hitboxes, petal particles & more for florr.io
 // @namespace    http://tampermonkey.net/
-// @version      0.5.6
+// @version      0.5.7
 // @description  Hitboxes, petal particles, inventory rarity counter, unlock all petals, server selector, get entity position, disable crafting & more for florr.io
 // @author       zertalious
 // @match        https://florr.io/*
@@ -278,6 +278,9 @@ let entityTexts = {};
 let texts;
 let objects = [];
 
+let zoom = 1;
+let nZoom = zoom;
+
 const FlorrkitImports = {
 	print(n) {
 		console.log('float: ' + n);
@@ -376,7 +379,9 @@ const FlorrkitImports = {
 	}, 
 	stopCapturingText() {
 		texts = null;
-	}
+	}, 
+	getViewWidth: () => 1920 * zoom, 
+	getViewHeight: () => 1080 * zoom
 };
 
 ProxyFunction(CTX, 'fillText', (ctx, args) => {
@@ -472,6 +477,8 @@ async function editWasm(buffer) {
   (import "florrkit" "alwaysShowPetalRarity" (func $alwaysShowPetalRarity (result i32)))
   (import "florrkit" "startCapturingText" (func $startCapturingText (param i32)))
   (import "florrkit" "stopCapturingText" (func $stopCapturingText))
+  (import "florrkit" "getViewWidth" (func $getViewWidth (result f32)))
+  (import "florrkit" "getViewHeight" (func $getViewHeight (result f32)))
   
   (func `, 'imports')
 		.replace2('(local $l53 i64)\n', `(local $l53 i64) (local $entity i32)\n`, 'params')
@@ -559,7 +566,16 @@ async function editWasm(buffer) {
                     i32.eqz
                     br_if $B356`, 
                     'show petal rarity'
-        );
+        ).replace2(`block $B8
+      block $B9
+        block $B10
+          local.get $p2`, `block $B8
+      block $B9
+        block $B10
+          br 0
+          local.get $p2`, 'disable object cull')
+        .replaceAll('f32.const 0x1.ep+10 (;=1920;)', 'call $getViewWidth')
+        .replaceAll('f32.const 0x1.0ep+10 (;=1080;)', 'call $getViewHeight');
 
 	INVENTORY_ADDRESS = wat.findParam(`i32.const 8
       i32.shr_u
@@ -608,7 +624,8 @@ const settings = {
 	showUniqueParticles: true,
 	showRarityCount: true, 
 	alwaysShowPetalRarity: false, 
-	disableCrafting: false
+	disableCrafting: false, 
+	scrollZooming: false
 };
 
 const Icons = {
@@ -877,6 +894,50 @@ const div = fromHtml(`<div>
 		display: none;
 	}
 
+	.range {
+		--color: dodgerblue;
+		-webkit-appearance: none;
+		outline: 0;
+		position: relative;
+		overflow: hidden;
+		font-size: 16px;
+		height: 1em;
+		width: 3em;
+		cursor: col-resize;
+		border-radius: 0;
+		box-shadow: 0 0 0 0.15em #000;
+	}
+
+	::-webkit-slider-runnable-track {
+		background: #aaa;
+	}
+
+	::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		width: 0.3em;
+		height: 1em;
+		background: #fff;
+		box-shadow: -100em 0 0 100em var(--color);
+	}
+
+	::-moz-range-track {
+		height: 1em;
+		background: #aaa;
+	}
+
+	::-moz-range-thumb {
+		width: 0.3em;
+		height: 1em;
+		background: #fff;
+		box-shadow: -100em 0 0 100em var(--color);
+		border-radius: 0 !important;
+	}
+
+	.row {
+		display: flex; 
+		grid-gap: 5px; 
+		align-items: center;
+	}
 
 </style>
 
@@ -887,8 +948,13 @@ const div = fromHtml(`<div>
 		</div>
 		<div class="dialog-header" stroke="Florrkit v${GM_info.script.version}"></div>
 		<div class="dialog-content">
+			<div class="row">
+				<div stroke="Zoom:"></div>
+				<input type="range" class="range zoom" style="flex: 1;" min="1" max="20" step="0.5" value="${nZoom}">
+				<div stroke="1x"></div>
+			</div>
 			<settings></settings>
-			<div style="display: flex; grid-gap: 5px; align-items: center;">
+			<div class="row">
 				<div stroke="Hitbox Color:"></div>
 				<input type="color" class="colorpicker hitbox-color" value="${GM_getValue('hitboxColor', '#ff0000')}">
 			</div>
@@ -924,6 +990,28 @@ const div = fromHtml(`<div>
 </div>
 
 </div>`);
+
+const zoomEl = div.querySelector('.zoom');
+const zoomValueEl = zoomEl.nextElementSibling;
+zoomEl.oninput = function () {
+	nZoom = parseFloat(this.value);
+	updateZoomValue();
+}
+updateZoomValue();
+
+function updateZoomValue() {
+	zoomValueEl.setAttribute('stroke', nZoom.toFixed(1) + 'x');
+}
+
+document.onwheel = function (event) {
+	if (settings.scrollZooming) {
+		const f = event.deltaY < 0 ? 0.9 : 1.1;
+		nZoom *= f;
+		nZoom = Math.min(Math.max(0.1, nZoom), 100)
+		zoomEl.value = nZoom;
+		updateZoomValue();
+	}
+}
 
 const overlayEl = div.querySelector('.overlay');
 
@@ -1153,6 +1241,7 @@ function animate() {
 	for (const dialog of dialogs) dialog.update();
 
 	craftDisableT = lerp(craftDisableT, 0, 0.2);
+	zoom = lerp(zoom, nZoom, 0.1);
 
 	window.requestAnimationFrame(animate);
 }
