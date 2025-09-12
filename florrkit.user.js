@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Florrkit - Hitboxes, petal particles & more for florr.io
+// @name         Florrkit - Hitboxes, infinite zoom, particles & more for florr.io
 // @namespace    http://tampermonkey.net/
-// @version      0.5.7
-// @description  Hitboxes, petal particles, inventory rarity counter, unlock all petals, server selector, get entity position, disable crafting & more for florr.io
+// @version      0.5.8
+// @description  Hitboxes, petal particles, inventory rarity counter, unlock all petals, server selector, get entity position, disable crafting, infinite zooming & more for florr.io
 // @author       zertalious
 // @match        https://florr.io/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=florr.io
@@ -15,6 +15,8 @@
 
 function onGameObjects(objects) {
 	/* 
+
+	m28 brok this. sad.
 	
 	Use this function to access game objects in your view.
 	Might be handy for creating mob alerts or self-playing bots.
@@ -289,14 +291,18 @@ const FlorrkitImports = {
 		console.log('int: ' + n);
 	},
 	drawCircle(world, entity, layer) {
+		// m28 broke hitboxes :(
+		return;
+
 		if (layer === 8) return; // petal drops
 
 		const isDead = u8(u32(entity, 76), 8) === 1;
 		if (isDead) return;
 
 		const pos = u32(u32(u32(entity, 72)), 64);
-		const x = f64(pos, 352);
-		const y = f64(pos, 360);
+		const x = f64(pos, 360); // 352
+		const y = f64(pos, 368); // 360
+		
 		const size = f32(u32(entity, 72), 8);
 
 		const healthBar = u32(u32(u32(entity, 72)), 80);
@@ -337,7 +343,7 @@ const FlorrkitImports = {
 
 		if (!settings.showHitbox) return;
 
-		if (playerRarity > 0) {
+		/*if (playerRarity > 0) {
 			const n = u8(playerRarity, 18);
 			if (!settings.showPlayerHitbox) return;
 		}
@@ -350,7 +356,7 @@ const FlorrkitImports = {
 
 		if (!playerRarity && !petalRarity) {
 			if (!settings.showMobHitbox) return;
-		}
+		}*/
 
 		ctx.save();
 
@@ -386,6 +392,10 @@ const FlorrkitImports = {
 
 ProxyFunction(CTX, 'fillText', (ctx, args) => {
 	if (texts) texts.push(args[0]);
+	
+	if (args[0] == 'sex' && ctx.fillStyle === '#000000') {
+		console.log('here')
+	}
 });
 
 ProxyFunction(CTX, 'clearRect', ctx => {
@@ -953,6 +963,7 @@ const div = fromHtml(`<div>
 				<input type="range" class="range zoom" style="flex: 1;" min="1" max="20" step="0.5" value="${nZoom}">
 				<div stroke="1x"></div>
 			</div>
+			<div stroke="*M28 patched hitboxes. Wait till they get fixed." style="color: #f55;"></div>
 			<settings></settings>
 			<div class="row">
 				<div stroke="Hitbox Color:"></div>
