@@ -393,10 +393,6 @@ const FlorrkitImports = {
 
 ProxyFunction(CTX, 'fillText', (ctx, args) => {
 	if (texts) texts.push(args[0]);
-	
-	if (args[0] == 'sex' && ctx.fillStyle === '#000000') {
-		console.log('here')
-	}
 });
 
 ProxyFunction(CTX, 'clearRect', ctx => {
