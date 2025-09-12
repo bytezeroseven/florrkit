@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Florrkit - Hitboxes, infinite zoom, particles & more for florr.io
 // @namespace    http://tampermonkey.net/
-// @version      0.5.8
+// @version      0.5.9
 // @description  Hitboxes, petal particles, inventory rarity counter, unlock all petals, server selector, get entity position, disable crafting, infinite zooming & more for florr.io
 // @author       zertalious
 // @match        https://florr.io/*
@@ -343,7 +343,7 @@ const FlorrkitImports = {
 
 		if (!settings.showHitbox) return;
 
-		/*if (playerRarity > 0) {
+		if (playerRarity > 0) {
 			const n = u8(playerRarity, 18);
 			if (!settings.showPlayerHitbox) return;
 		}
@@ -356,7 +356,7 @@ const FlorrkitImports = {
 
 		if (!playerRarity && !petalRarity) {
 			if (!settings.showMobHitbox) return;
-		}*/
+		}
 
 		ctx.save();
 
@@ -380,6 +380,7 @@ const FlorrkitImports = {
 	getParticleMinRarity: () => settings.showParticles ? 0 : 7,
 	showUniqueParticles: () => settings.showUniqueParticles ? 1 : 0, 
 	alwaysShowPetalRarity: () => settings.alwaysShowPetalRarity ? 1 : 0, 
+	hideChatBubble: () => settings.showChatBubble ? 0 : 1, 
 	startCapturingText(entity) {
 		entityTexts[entity] = texts = [];
 	}, 
@@ -485,6 +486,7 @@ async function editWasm(buffer) {
   (import "florrkit" "getParticleMinRarity" (func $getParticleMinRarity (result i32)))
   (import "florrkit" "showUniqueParticles" (func $showUniqueParticles (result i32)))
   (import "florrkit" "alwaysShowPetalRarity" (func $alwaysShowPetalRarity (result i32)))
+  (import "florrkit" "hideChatBubble" (func $hideChatBubble (result i32)))
   (import "florrkit" "startCapturingText" (func $startCapturingText (param i32)))
   (import "florrkit" "stopCapturingText" (func $stopCapturingText))
   (import "florrkit" "getViewWidth" (func $getViewWidth (result f32)))
@@ -585,7 +587,16 @@ async function editWasm(buffer) {
           br 0
           local.get $p2`, 'disable object cull')
         .replaceAll('f32.const 0x1.ep+10 (;=1920;)', 'call $getViewWidth')
-        .replaceAll('f32.const 0x1.0ep+10 (;=1080;)', 'call $getViewHeight');
+        .replaceAll('f32.const 0x1.0ep+10 (;=1080;)', 'call $getViewHeight')
+        .replace2(`i32.sub
+      local.set $l8
+      loop $L450
+        block $B451`, `i32.sub
+      local.set $l8
+      loop $L450
+        block $B451
+          call $hideChatBubble
+          br_if 0`, 'bubbles');
 
 	INVENTORY_ADDRESS = wat.findParam(`i32.const 8
       i32.shr_u
@@ -634,6 +645,7 @@ const settings = {
 	showUniqueParticles: true,
 	showRarityCount: true, 
 	alwaysShowPetalRarity: false, 
+	showChatBubble: true, 
 	disableCrafting: false, 
 	scrollZooming: false
 };
