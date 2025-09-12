@@ -12,6 +12,7 @@ Install now: https://greasyfork.org/en/scripts/543264-florrkit-hitboxes-petal-pa
 - Server selector
 - Get mob/player data (for scripters)
 - Disable crafting (for gamble addicts)
+- Hide chat bubbles.
 
 ## Credits
 Created by Zertalious.
