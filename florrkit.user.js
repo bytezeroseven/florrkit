@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Florrkit - Hitboxes, infinite zoom, particles & more for florr.io
 // @namespace    http://tampermonkey.net/
-// @version      0.6.1
+// @version      0.6.2
 // @description  Hitboxes, petal particles, inventory rarity counter, unlock all petals, server selector, get entity position, disable crafting, infinite zooming & more for florr.io
 // @author       zertalious
 // @match        https://florr.io/*
@@ -293,19 +293,19 @@ const FlorrkitImports = {
 	drawCircle(world, entity, layer) {
 		if (layer === 8) return; // petal drops
 
-		const isDead = u8(u32(entity, 68), 9) === 1;
+		const isDead = u8(u32(entity, 68), 8) === 1;
 		if (isDead) return;
 
-		const pos = u32(u32(u32(entity, 80)), 64);
+		const pos = u32(u32(u32(entity, 72)), 84);
 		const x = f64(pos, 360);
 		const y = f64(pos, 368);
 		
-		const size = f32(u32(entity, 80), 8);
+		const size = f32(u32(entity, 72), 8);
 
-		const healthBar = u32(u32(u32(entity, 80)), 76);
+		const healthBar = u32(u32(u32(entity, 72)), 76);
 		const healthBarTextCount = u8(healthBar, 10);
 
-		const playerRarity = u32(u32(u32(entity, 80)), 84);
+		const playerRarity = u32(u32(u32(entity, 72)), 64);
 
 		const texts = entityTexts[healthBar];
 		if (texts && texts.length > 0) {
@@ -345,7 +345,7 @@ const FlorrkitImports = {
 			if (!settings.showPlayerHitbox) return;
 		}
 
-		const petalRarity = u32(u32(u32(entity, 72)), 64);
+		const petalRarity = u32(u32(u32(entity, 72)), 80);
 		if (petalRarity > 0) {
 			const n = u8(petalRarity, 10);
 			if (!settings.showPetalHitbox) return;
@@ -395,14 +395,6 @@ const FlorrkitImports = {
 	getViewWidth: () => 1920 * zoom, 
 	getViewHeight: () => 1080 * zoom
 };
-
-ProxyFunction(CTX, 'fillText', (ctx, [text]) => {
-	if (texts) texts.push(text);
-
-	if (text === 'x6') {
-		console.log('here')
-	}
-});
 
 ProxyFunction(CTX, 'clearRect', ctx => {
 	if (ctx.canvas === canvas) {
@@ -536,21 +528,21 @@ async function editWasm(buffer) {
                 'draw hitbox'
         ).replace2(`local.set $p0
                       local.get $l11
-                      i32.load8_u offset=10
+                      i32.load8_u offset=9
                       i32.const 7`, 
                   `local.set $p0
                       local.get $l11
-                      i32.load8_u offset=10
+                      i32.load8_u offset=9
                       call $getParticleMinRarity`, 
                       'particle min rarity'
         ).replace2(`local.get $l11
-                      i32.load8_u offset=10
+                      i32.load8_u offset=9
                       i32.const 8
                       i32.shl
                       i32.const 1792
                       i32.eq`, 
                   `local.get $l11
-                      i32.load8_u offset=10
+                      i32.load8_u offset=9
                       i32.const 8
                       i32.shl
                       i32.const 1792
