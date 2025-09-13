@@ -470,7 +470,7 @@ async function editWasm(buffer) {
 	let wat = wasm.toText({});
 
 	const funcId = wat.findParam(`local.get $l14
-                local.get $p4
+                local.get $l6
                 local.get $l17
                 f64.load offset=32
                 call `, 'funcId');
@@ -553,7 +553,7 @@ async function editWasm(buffer) {
                       select
                       `, 'particle color'
         ).replace2(`local.get $l14
-                local.get $p4
+                local.get $l6
                 local.get $l17
                 f64.load offset=32
                 call ${funcId}`, `
@@ -561,7 +561,7 @@ async function editWasm(buffer) {
                 call $startCapturingText
 
                 local.get $l14
-                local.get $p4
+                local.get $l6
                 local.get $l17
                 f64.load offset=32
                 call ${funcId}
@@ -645,6 +645,14 @@ const settings = {
 	showChatBubble: true, 
 	disableCrafting: false, 
 	scrollZooming: false
+};
+
+const keyToSetting = {
+	KeyF: 'showHitbox', 
+	KeyI: 'showParticles', 
+	KeyU: 'showUniqueParticles', 
+	KeyH: 'alwaysShowPetalRarity', 
+	KeyB: 'showChatBubble'
 };
 
 let hitboxSize = GM_getValue('hitboxSize', 2);
@@ -1077,17 +1085,31 @@ function initLinks() {
 	}
 }
 
+const settingEls = {}
+
 function initSettings() {
+	const settingToKey = {};
+	for (const key in keyToSetting) {
+		settingToKey[keyToSetting[key]] = key; 
+	}
+
 	const placeholder = div.querySelector('settings');
 
 	for (const key in settings) {
+		let shortKey = settingToKey[key];
+		if (shortKey && shortKey.startsWith('Key')) {
+			shortKey = shortKey.slice(3);
+		}
+
 		const el = fromHtml(`<label>
 			<input type="checkbox" class="checkbox">
-			<span stroke="${fromCamel(key)}"></span>
+			<span stroke="${shortKey ? `[${shortKey}] ` : ''}${fromCamel(key)}"></span>
 		</label>`);
 
 		const checkboxEl = el.querySelector('.checkbox');
 		settings[key] = GM_getValue(key, settings[key]);
+
+		settingEls[key] = checkboxEl;
 
 		checkboxEl.checked = settings[key];
 		checkboxEl.onchange = function () {
@@ -1100,6 +1122,15 @@ function initSettings() {
 
 	placeholder.remove();
 }
+
+document.addEventListener('keyup', event => {
+	const key = keyToSetting[event.code];
+	if (key) {
+		const el = settingEls[key];
+		el.checked = !el.checked;
+		el.onchange();
+	}
+})
 
 const dialogs = [];
 
