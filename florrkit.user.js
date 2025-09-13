@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Florrkit - Hitboxes, infinite zoom, particles & more for florr.io
 // @namespace    http://tampermonkey.net/
-// @version      0.6.2
+// @version      0.6.3
 // @description  Hitboxes, petal particles, inventory rarity counter, unlock all petals, server selector, get entity position, disable crafting, infinite zooming & more for florr.io
 // @author       zertalious
 // @match        https://florr.io/*
@@ -231,25 +231,27 @@ for (let i = 0; i < rarities.length; i++) {
 	rarityIds[name.toLowerCase()] = i;
 }
 
+const WasmVars = {};
+
 let ROT_SPEED_ADDRESS = -1;
 function setRotSpeed(n) {
-	if (ROT_SPEED_ADDRESS <= -1) return;
-	f32(ROT_SPEED_ADDRESS, 0, n);
+	if (WasmVars.rotSpeedAddress) {
+		f32(WasmVars.rotSpeedAddress, 0, n);
+	}
 }
 
-let INVENTORY_ADDRESS = -1;
 const PETAL_COUNT = 106;
 const RARITY_COUNT = 9;
 
 function getRarityCount() {
-	if (INVENTORY_ADDRESS <= -1) return {};
+	if (!WasmVars.inventoryAddress) return {};
 
 	const map = {};
 
 	for (let petal = 1; petal <= PETAL_COUNT; petal++) {
 		for (let rarity = 0; rarity < RARITY_COUNT; rarity++) {
 			const offset = (petal * RARITY_COUNT + rarity) << 2;
-			const stock = Module.HEAPU32[(INVENTORY_ADDRESS + offset) >> 2];
+			const stock = Module.HEAPU32[(WasmVars.inventoryAddress + offset) >> 2];
 
 			if (stock > 0) {
 				map[rarity] = (map[rarity] || 0) + stock;
@@ -261,12 +263,12 @@ function getRarityCount() {
 }
 
 function unlockAllPetals() {
-	if (INVENTORY_ADDRESS <= -1) return;
+	if (!WasmVars.inventoryAddress) return;
 
 	for (let petal = 1; petal <= PETAL_COUNT; petal++) {
 		for (let rarity = 0; rarity < RARITY_COUNT; rarity++) {
 			const offset = (petal * RARITY_COUNT + rarity) << 2;
-			Module.HEAPU32[(INVENTORY_ADDRESS + offset) >> 2] = 1;
+			Module.HEAPU32[(WasmVars.inventoryAddress + offset) >> 2] = 1;
 		}
 	}
 }
@@ -293,19 +295,19 @@ const FlorrkitImports = {
 	drawCircle(world, entity, layer) {
 		if (layer === 8) return; // petal drops
 
-		const isDead = u8(u32(entity, 68), 8) === 1;
+		const isDead = u8(u32(entity, WasmVars.isDead), WasmVars.isDeadValue) === 1;
 		if (isDead) return;
 
-		const pos = u32(u32(u32(entity, 72)), 84);
-		const x = f64(pos, 360);
-		const y = f64(pos, 368);
+		const pos = u32(u32(u32(entity, WasmVars.object)), WasmVars.pos);
+		const x = f64(pos, WasmVars.xValue);
+		const y = f64(pos, WasmVars.yValue);
 		
-		const size = f32(u32(entity, 72), 8);
+		const size = f32(u32(entity, WasmVars.object), WasmVars.sizeValue);
 
-		const healthBar = u32(u32(u32(entity, 72)), 76);
+		const healthBar = u32(u32(u32(entity, WasmVars.object)), WasmVars.healthBar);
 		const healthBarTextCount = u8(healthBar, 10);
 
-		const playerRarity = u32(u32(u32(entity, 72)), 64);
+		const playerRarity = u32(u32(u32(entity, WasmVars.object)), WasmVars.playerRarity);
 
 		const texts = entityTexts[healthBar];
 		if (texts && texts.length > 0) {
@@ -318,7 +320,7 @@ const FlorrkitImports = {
 
 			if (playerRarity > 0) {
 				data.type = 'player';
-				data.rarity = u8(playerRarity, 18);
+				data.rarity = u8(playerRarity, WasmVars.playerRarityValue);
 
 				if (texts.length === 2) {
 					[data.username, data.level] = texts;
@@ -341,13 +343,13 @@ const FlorrkitImports = {
 		if (!settings.showHitbox) return;
 
 		if (playerRarity > 0) {
-			const n = u8(playerRarity, 18);
+			const n = u8(playerRarity, WasmVars.playerRarityValue);
 			if (!settings.showPlayerHitbox) return;
 		}
 
-		const petalRarity = u32(u32(u32(entity, 72)), 80);
+		const petalRarity = u32(u32(u32(entity, WasmVars.object)), WasmVars.petalRarity);
 		if (petalRarity > 0) {
-			const n = u8(petalRarity, 10);
+			const n = u8(petalRarity, WasmVars.petalRarityValue);
 			if (!settings.showPetalHitbox) return;
 		}
 
@@ -375,7 +377,7 @@ const FlorrkitImports = {
 		);
 
 		ctx.beginPath();
-		ctx.arc(x, y, size, 0, Math.PI * 2);
+		ctx.arc(x, y, size, 0, PI2);
 		ctx.strokeStyle = hitboxColorEl.value;
 		ctx.lineWidth = hitboxSize;
 		ctx.stroke();
@@ -441,10 +443,10 @@ WebAssembly.instantiate = async function (buffer, imports) {
 		buffer = await editWasm(buffer);
 		imports.florrkit = FlorrkitImports;
 		settingsBtnEl.style.background = '';
-		
+
 		console.log('wasm overloaded!');
 	} catch (error) {
-		alert('Florrkit wasm overload failed! Report issue to developer.\n\nError: ' + error.message);
+		alert('Florrkit wasm overload failed! Report issue to developer.\n\nError: ' + error.message + '\nWasm Vars: ' + JSON.stringify(WasmVars, undefined, '  '));
 		console.error('wasm overload failed!', error);
 	}
 
@@ -469,11 +471,106 @@ async function editWasm(buffer) {
 
 	let wat = wasm.toText({});
 
-	const funcId = wat.findParam(`local.get $l14
+	// find vars
+
+	function find(x, keys) {
+		const matches = new RegExp(x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replaceAll('<PARAM>', '(.+)').replaceAll('<ANY>', '.+')).exec(wat);
+		if (!matches) throw new Error('params not found: ' + keys);
+
+		for (let i = 1; i < matches.length; i++) {
+			const key = keys[i - 1];
+			let value = matches[i];
+			const n = parseFloat(value);
+			if (!isNaN(n)) value = n;
+			WasmVars[key] = value;
+		}
+	}
+
+	find(`local.get $l14
                 local.get $l6
                 local.get $l17
                 f64.load offset=32
-                call `, 'funcId');
+                call <PARAM>`, ['healthBarFunc'])
+
+	find(`i32.const 8
+      i32.shr_u
+      i32.add
+      i32.const 2
+      i32.shl
+      i32.const <PARAM>`, ['inventoryAddress']);
+
+	find(`end
+      local.get $l2
+      f32.const 0x0p+0 (;=0;)
+      i32.const <PARAM>`, ['rotSpeedAddress']);
+
+	//
+
+	find(`local.tee <ANY>
+                      i32.load offset=<PARAM>
+                      local.set <ANY>
+                      local.get <ANY>
+                      f64.load offset=<ANY>
+                      local.set <ANY>
+                      local.get <ANY>
+                      i32.load offset=<PARAM>`, ['object', 'pos']);
+
+	find(`local.get <ANY>
+                        f64.load offset=<PARAM>
+                        local.set <ANY>
+                        local.get <ANY>
+                        f64.load offset=<PARAM>`, ['yValue', 'xValue']);
+
+	find(`end
+                            call <ANY>
+                            local.set <ANY>
+                            local.get <ANY>
+                            f32.load offset=<PARAM>`, ['sizeValue'])
+
+	find(`i32.load offset=<PARAM>
+      local.tee <ANY>
+      i32.eqz
+      if $I26
+        br $B1
+      end
+      local.get <ANY>
+      i32.load8_u offset=<PARAM>`, ['playerRarity', 'playerRarityValue'])
+
+	find(`local.get <ANY>
+                        i32.load
+                        i32.load
+                        i32.load offset=<PARAM>`, ['petalRarity']);
+
+	find(`drop
+                        local.get <ANY>
+                        i32.load8_u offset=<PARAM>
+                        local.set <ANY>`, ['petalRarityValue'])
+
+	find(`br_if $B327
+                local.get <ANY>
+                i32.load offset=<PARAM>
+                local.tee <ANY>`, ['healthBar']);
+
+	find(`end
+                    local.get <ANY>
+                    local.get <PARAM>
+                    local.get <ANY>
+                    i32.const 255`, ['worldVar']);
+
+	find(`block $B194
+              local.get <ANY>
+              i32.load offset=<ANY>
+              local.tee <ANY>
+              i32.load offset=<PARAM>
+              local.tee <ANY>
+              if $I195
+                local.get <ANY>
+                i32.load8_u offset=<PARAM>
+                i32.const 2`, ['isDead', 'isDeadValue']);
+
+	console.log(WasmVars);
+
+	// edit wasm
 
 	wat = wat.replace2(`  (func `, `
 
@@ -513,7 +610,7 @@ async function editWasm(buffer) {
                 i32.ne
                 br_if $L415`, `
 
-                local.get $p4
+                local.get $l6
                 local.get $entity
                 local.get $l12
                 call $drawCircle
@@ -556,7 +653,7 @@ async function editWasm(buffer) {
                 local.get $l6
                 local.get $l17
                 f64.load offset=32
-                call ${funcId}`, `
+                call ${WasmVars.healthBarFunc}`, `
                 local.get $l14
                 call $startCapturingText
 
@@ -564,7 +661,7 @@ async function editWasm(buffer) {
                 local.get $l6
                 local.get $l17
                 f64.load offset=32
-                call ${funcId}
+                call ${WasmVars.healthBarFunc}
                 
                 call $stopCapturingText`, 'health bar'
     	).replace2(`i32.load8_u
@@ -595,35 +692,7 @@ async function editWasm(buffer) {
           call $hideChatBubble
           br_if 0`, 'bubbles');
 
-	INVENTORY_ADDRESS = wat.findParam(`i32.const 8
-      i32.shr_u
-      i32.add
-      i32.const 2
-      i32.shl
-      i32.const `, 'inventory addy');
-
-	console.log('Inventory address: ' + INVENTORY_ADDRESS);
-
-	ROT_SPEED_ADDRESS = wat.findParam(`end
-      local.get $l2
-      f32.const 0x0p+0 (;=0;)
-      i32.const `, 'rot speed addy')
-
-	console.log('Rotation speed address: ' + ROT_SPEED_ADDRESS);
-
 	return wabt.parseWat('x', wat).toBinary({}).buffer;
-}
-
-String.prototype.findParam = function (search, name = 'x') {
-	const i = this.indexOf(search);
-	if (i > -1) {
-		let text = this.slice(i + search.length);
-		text = text.slice(0, text.indexOf('\n'))
-		const n = parseFloat(text);
-		return isNaN(n) ? text : n;
-	}
-
-	throw new Error(`param search not found: ${name}`);
 }
 
 String.prototype.replace2 = function (a, b, name = 'x') {
