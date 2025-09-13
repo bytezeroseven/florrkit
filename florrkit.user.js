@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Florrkit - Hitboxes, infinite zoom, particles & more for florr.io
 // @namespace    http://tampermonkey.net/
-// @version      0.6.0
+// @version      0.6.1
 // @description  Hitboxes, petal particles, inventory rarity counter, unlock all petals, server selector, get entity position, disable crafting, infinite zooming & more for florr.io
 // @author       zertalious
 // @match        https://florr.io/*
@@ -396,8 +396,12 @@ const FlorrkitImports = {
 	getViewHeight: () => 1080 * zoom
 };
 
-ProxyFunction(CTX, 'fillText', (ctx, args) => {
-	if (texts) texts.push(args[0]);
+ProxyFunction(CTX, 'fillText', (ctx, [text]) => {
+	if (texts) texts.push(text);
+
+	if (text === 'x6') {
+		console.log('here')
+	}
 });
 
 ProxyFunction(CTX, 'clearRect', ctx => {
