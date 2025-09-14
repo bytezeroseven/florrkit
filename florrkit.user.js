@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Florrkit - Hitboxes, infinite zoom, particles & more for florr.io
 // @namespace    http://tampermonkey.net/
-// @version      0.6.3
+// @version      0.6.4
 // @description  Hitboxes, petal particles, inventory rarity counter, unlock all petals, server selector, get entity position, disable crafting, infinite zooming & more for florr.io
 // @author       zertalious
 // @match        https://florr.io/*
@@ -295,8 +295,8 @@ const FlorrkitImports = {
 	drawCircle(world, entity, layer) {
 		if (layer === 8) return; // petal drops
 
-		const isDead = u8(u32(entity, WasmVars.isDead), WasmVars.isDeadValue) === 1;
-		if (isDead) return;
+		/*const isDead = u8(u32(entity, WasmVars.isDead), WasmVars.isDeadValue) === 1;
+		if (isDead) return;*/
 
 		const pos = u32(u32(u32(entity, WasmVars.object)), WasmVars.pos);
 		const x = f64(pos, WasmVars.xValue);
@@ -305,7 +305,7 @@ const FlorrkitImports = {
 		const size = f32(u32(entity, WasmVars.object), WasmVars.sizeValue);
 
 		const healthBar = u32(u32(u32(entity, WasmVars.object)), WasmVars.healthBar);
-		const healthBarTextCount = u8(healthBar, 10);
+		const healthBarTextCount = u8(healthBar, WasmVars.healthBarTextCount);
 
 		const playerRarity = u32(u32(u32(entity, WasmVars.object)), WasmVars.playerRarity);
 
@@ -471,11 +471,19 @@ async function editWasm(buffer) {
 
 	let wat = wasm.toText({});
 
-	// find vars
+	wat = editWat(wat);
+
+	return wabt.parseWat('x', wat).toBinary({}).buffer;
+}
+
+function editWat(wat) {
+	function toRegex(x) {
+		return new RegExp(x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replaceAll('<PARAM>', '(.+)').replaceAll('<ANY>', '.+'))
+	}
 
 	function find(x, keys) {
-		const matches = new RegExp(x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replaceAll('<PARAM>', '(.+)').replaceAll('<ANY>', '.+')).exec(wat);
-		if (!matches) throw new Error('params not found: ' + keys);
+		const matches = toRegex(x).exec(wat);
+		if (!matches) throw new Error('not found: ' + keys);
 
 		for (let i = 1; i < matches.length; i++) {
 			const key = keys[i - 1];
@@ -486,25 +494,16 @@ async function editWasm(buffer) {
 		}
 	}
 
-	find(`local.get $l14
-                local.get $l6
-                local.get $l17
-                f64.load offset=32
-                call <PARAM>`, ['healthBarFunc'])
+	function replace(search, content, name = 'x') {
+		const re = toRegex(search)
+		const match = wat.match(re);
+		if (!match) throw new Error(`replace search not found: ${name}`);
 
-	find(`i32.const 8
-      i32.shr_u
-      i32.add
-      i32.const 2
-      i32.shl
-      i32.const <PARAM>`, ['inventoryAddress']);
+		console.log(name + '\n' + match[0]);
+		wat = wat.replace(re, content.replace(/<PARAM_([0-9]+)>/g, '#$1').replaceAll('#', '$'));
+	}
 
-	find(`end
-      local.get $l2
-      f32.const 0x0p+0 (;=0;)
-      i32.const <PARAM>`, ['rotSpeedAddress']);
-
-	//
+	// find vars
 
 	find(`local.tee <ANY>
                       i32.load offset=<PARAM>
@@ -546,10 +545,20 @@ async function editWasm(buffer) {
                         i32.load8_u offset=<PARAM>
                         local.set <ANY>`, ['petalRarityValue'])
 
-	find(`br_if $B327
+	find(`i32.const 2
+                i32.shl
+                i32.add
+                i32.load
+                i32.load
+                local.tee <ANY>
+                local.get <ANY>
+                i32.load offset=<ANY>
+                i32.eq
+                br_if <ANY>
                 local.get <ANY>
                 i32.load offset=<PARAM>
-                local.tee <ANY>`, ['healthBar']);
+                local.tee <ANY>
+                i32.load8_u offset=<PARAM>`, ['healthBar', 'healthBarTextCount']);
 
 	find(`end
                     local.get <ANY>
@@ -557,22 +566,34 @@ async function editWasm(buffer) {
                     local.get <ANY>
                     i32.const 255`, ['worldVar']);
 
-	find(`block $B194
+	/*find(`block <ANY
               local.get <ANY>
               i32.load offset=<ANY>
               local.tee <ANY>
               i32.load offset=<PARAM>
               local.tee <ANY>
-              if $I195
+              if <ANY>
                 local.get <ANY>
                 i32.load8_u offset=<PARAM>
-                i32.const 2`, ['isDead', 'isDeadValue']);
+                i32.const 2`, ['isDead', 'isDeadValue']);*/
+
+	find(`i32.const 8
+      i32.shr_u
+      i32.add
+      i32.const 2
+      i32.shl
+      i32.const <PARAM>`, ['inventoryAddress']);
+
+	find(`end
+      local.get $l2
+      f32.const 0x0p+0 (;=0;)
+      i32.const <PARAM>`, ['rotSpeedAddress']);
 
 	console.log(WasmVars);
 
 	// edit wasm
 
-	wat = wat.replace2(`  (func `, `
+	replace(`  (func `, `
 
   (import "florrkit" "print" (func $print (param f64)))
   (import "florrkit" "printInt" (func $printInt (param i32)))
@@ -586,103 +607,92 @@ async function editWasm(buffer) {
   (import "florrkit" "getViewWidth" (func $getViewWidth (result f32)))
   (import "florrkit" "getViewHeight" (func $getViewHeight (result f32)))
   
-  (func `, 'imports')
-		.replace2('(local $l53 i64)\n', `(local $l53 i64) (local $entity i32)\n`, 'params')
-		.replace2(`  local.get $p3
-                end
-                local.get $l17
-                f64.load offset=32
-                f32.demote_f64`, 
-                `  local.get $p3
-                end
+  (func `, 'imports');
 
-                local.tee $entity
+	replace('(local $l53 i64)\n', `(local $l53 i64) (local $entity i32)\n`, 'params');
+
+	replace(`i32.load
+                else
+                  local.get <PARAM>
+                end
+                local.get `, `i32.load
+                else
+                  local.get <PARAM_1>
+                end
                 
-                local.get $l17
-                f64.load offset=32
-                f32.demote_f64`, 
-                'entity value'
-        ).replace2(`local.get $l16
-                i32.const 4
-                i32.add
-                local.tee $l16
-                local.get $l14
-                i32.ne
-                br_if $L415`, `
+                local.tee $entity
 
-                local.get $l6
+                local.get `, 'entity value');
+
+	replace(`f64.load offset=32
+                f32.demote_f64
+                call <PARAM>`, `f64.load offset=32
+                f32.demote_f64
+                call <PARAM_1>
+
+                local.get ${WasmVars.worldVar}
                 local.get $entity
                 local.get $l12
-                call $drawCircle
+                call $drawCircle`, 'draw hitbox');
 
-                local.get $l16
-                i32.const 4
-                i32.add
-                local.tee $l16
-                local.get $l14
-                i32.ne
-                br_if $L415`, 
-                'draw hitbox'
-        ).replace2(`local.set $p0
-                      local.get $l11
-                      i32.load8_u offset=9
-                      i32.const 7`, 
-                  `local.set $p0
-                      local.get $l11
-                      i32.load8_u offset=9
-                      call $getParticleMinRarity`, 
-                      'particle min rarity'
-        ).replace2(`local.get $l11
-                      i32.load8_u offset=9
-                      i32.const 8
+	replace(`i32.load8_u offset=<PARAM>
+                      i32.const 7`, `i32.load8_u offset=<PARAM_1>
+                      
+                      call $getParticleMinRarity`, 'particle min rarity');
+
+	replace(`i32.const 8
                       i32.shl
                       i32.const 1792
-                      i32.eq`, 
-                  `local.get $l11
-                      i32.load8_u offset=9
-                      i32.const 8
+                      i32.eq`, `i32.const 8
                       i32.shl
                       i32.const 1792
                       i32.eq
 
                       i32.const 1
                       call $showUniqueParticles
-                      select
-                      `, 'particle color'
-        ).replace2(`local.get $l14
-                local.get $l6
-                local.get $l17
-                f64.load offset=32
-                call ${WasmVars.healthBarFunc}`, `
-                local.get $l14
-                call $startCapturingText
+                      select`, 'particle color');
 
-                local.get $l14
-                local.get $l6
-                local.get $l17
-                f64.load offset=32
-                call ${WasmVars.healthBarFunc}
-                
-                call $stopCapturingText`, 'health bar'
-    	).replace2(`i32.load8_u
+	replace(`block <PARAM>
+                  block <PARAM>
+                    i32.const <PARAM>
+                    i32.load8_u
                     i32.eqz
-                    br_if $B356`, `i32.load8_u
+                    br_if`, `block <PARAM_1>
+                  block <PARAM_2>
+                    i32.const <PARAM_3>
+                    i32.load8_u
+
                     call $alwaysShowPetalRarity
                     i32.xor
+
                     i32.eqz
-                    br_if $B356`, 
-                    'show petal rarity'
-        ).replace2(`block $B8
+                    br_if`, 'show petal rarity');
+
+	replace(`local.get <PARAM>
+                local.get <PARAM>
+                local.get <PARAM>
+                f64.load offset=32
+                call <PARAM>`, `local.get <PARAM_1>
+                call $startCapturingText
+
+                local.get <PARAM_1>
+                local.get <PARAM_2>
+                local.get <PARAM_3>
+                f64.load offset=32
+                call <PARAM_4>
+                
+                call $stopCapturingText`, 'health bar');
+
+	replace(`block $B8
       block $B9
         block $B10
-          local.get $p2`, `block $B8
+          local.get <ANY>
+          i32.load offset=<ANY>`, `block $B8
       block $B9
         block $B10
-          br 0
-          local.get $p2`, 'disable object cull')
-        .replaceAll('f32.const 0x1.ep+10 (;=1920;)', 'call $getViewWidth')
-        .replaceAll('f32.const 0x1.0ep+10 (;=1080;)', 'call $getViewHeight')
-        .replace2(`i32.sub
+          br 0`, 'disable object cull');
+
+	replace(`i32.sub
       local.set $l8
       loop $L450
         block $B451`, `i32.sub
@@ -692,12 +702,10 @@ async function editWasm(buffer) {
           call $hideChatBubble
           br_if 0`, 'bubbles');
 
-	return wabt.parseWat('x', wat).toBinary({}).buffer;
-}
+	wat = wat.replaceAll('f32.const 0x1.ep+10 (;=1920;)', 'call $getViewWidth')
+		.replaceAll('f32.const 0x1.0ep+10 (;=1080;)', 'call $getViewHeight');
 
-String.prototype.replace2 = function (a, b, name = 'x') {
-	if (this.indexOf(a) === -1) throw new Error(`replace search not found: ${name}`);
-	return this.replace(a, b);
+	return wat;
 }
 
 // ui
