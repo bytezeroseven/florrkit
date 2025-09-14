@@ -34,6 +34,17 @@ function editWat(wat) {
 
 	// find vars
 
+	find(`block <ANY>
+      local.get <ANY>
+      i32.load offset=<PARAM>
+      local.tee <ANY>
+      if <ANY>
+        block <ANY>`, ['mob']);
+
+	find(`i32.store offset=<ANY>
+          local.get <ANY>
+          i32.load16_u offset=<PARAM>`, ['mobValue']);
+
 	find(`local.tee <ANY>
                       i32.load offset=<PARAM>
                       local.set <ANY>

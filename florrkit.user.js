@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Florrkit - Hitboxes, infinite zoom, particles & more for florr.io
 // @namespace    http://tampermonkey.net/
-// @version      0.6.5
+// @version      0.6.6
 // @description  Hitboxes, petal particles, inventory rarity counter, unlock all petals, server selector, get entity position, disable crafting, infinite zooming & more for florr.io
 // @author       zertalious
 // @match        https://florr.io/*
@@ -19,7 +19,14 @@ function onGameObjects(objects) {
 	Use this function to access game objects in your view.
 	Might be handy for creating mob alerts or self-playing bots.
 
-	[{ type, x, y, size, health, shield, guild, level, rarity, mob }]
+	Common fields: 
+		type, x, y, size, health, shield
+	
+	Mob fields: 
+		mobId, rarity, mobName, rarityName
+	
+	Player fields: 
+		username, level, guild, rarity
 
 	*/
 
@@ -224,13 +231,6 @@ const rarities = [
 	['Unique', '#555555']
 ];
 
-const rarityIds = {};
-for (let i = 0; i < rarities.length; i++) {
-	const [name] = rarities[i];
-	rarityIds[name] = i;
-	rarityIds[name.toLowerCase()] = i;
-}
-
 const WasmVars = {};
 
 let ROT_SPEED_ADDRESS = -1;
@@ -303,14 +303,26 @@ const FlorrkitImports = {
 		const y = f64(pos, WasmVars.yValue);
 		
 		const size = f32(u32(entity, WasmVars.object), WasmVars.sizeValue);
-
 		const healthBar = u32(u32(u32(entity, WasmVars.object)), WasmVars.healthBar);
-		const playerRarity = u32(u32(u32(entity, WasmVars.object)), WasmVars.playerRarity);
+
+		let playerRarity = u32(u32(u32(entity, WasmVars.object)), WasmVars.playerRarity);
+		playerRarity = playerRarity > 0 ? u8(playerRarity, WasmVars.playerRarityValue) : -1;
+
+		let petalRarity = u32(u32(u32(entity, WasmVars.object)), WasmVars.petalRarity);
+		petalRarity = petalRarity > 0 ? u8(petalRarity, WasmVars.petalRarityValue) : -1;
+
+		let mob = u32(entity, WasmVars.mob);
+		if (mob > 0) {
+			const n = u16(mob, WasmVars.mobValue);
+			const mobId = n & 0xff;
+			const mobRarity = n >> 8;
+			mob = [mobId, mobRarity];
+		}
 
 		if (healthBar > 0) {
 			const healthBarTextCount = u8(healthBar, WasmVars.healthBarTextCount);
 			const health = u8(healthBar, WasmVars.healthValue) / 255;
-			const shield = u8(healthBar, WasmVars.shieldValue) / 255; // i think this is wrong
+			const shield = u8(healthBar, WasmVars.shieldValue) / 255;
 
 			const texts = entityTexts[healthBar];
 			if (texts && texts.length > 0) {
@@ -323,45 +335,30 @@ const FlorrkitImports = {
 					shield
 				};
 
-				if (playerRarity > 0) {
+				if (mob) {
+					data.type = 'mob';
+					[data.mobId, data.rarity] = mob;
+					[data.mobName, data.rarityName] = texts;
+				} else {
 					data.type = 'player';
-					data.rarity = u8(playerRarity, WasmVars.playerRarityValue);
+					data.rarity = playerRarity;
 
 					if (texts.length === 2) {
 						[data.username, data.level] = texts;
 					} else {
 						[data.username, data.guild, data.level] = texts;
 					}
-
 					data.level = parseInt(data.level.split(' ')[1]);
-				} else {
-					data.type = 'mob';
-					[data.mob, data.rarity] = texts;
-
-					const n = rarityIds[data.rarity]
-					if (n !== undefined) data.rarity = n;
 				}
 
 				objects.push(data);
 			}
 		}
 
-		if (!settings.showHitbox) return;
-
-		if (playerRarity > 0) {
-			const n = u8(playerRarity, WasmVars.playerRarityValue);
-			if (!settings.showPlayerHitbox) return;
-		}
-
-		const petalRarity = u32(u32(u32(entity, WasmVars.object)), WasmVars.petalRarity);
-		if (petalRarity > 0) {
-			const n = u8(petalRarity, WasmVars.petalRarityValue);
-			if (!settings.showPetalHitbox) return;
-		}
-
-		if (!playerRarity && !petalRarity) {
-			if (!settings.showMobHitbox) return;
-		}
+		if (!settings.showHitbox ||
+			playerRarity > -1 && !settings.showPlayerHitbox || 
+			petalRarity > -1 && !settings.showPetalHitbox || 
+			mob && !settings.showMobHitbox) return;
 
 		if (size <= 0) {
 			if (!hitboxBroken) {
@@ -420,6 +417,10 @@ ProxyFunction(CTX, 'fillText', (ctx, args) => {
 
 function u8(address, offset = 0) {
 	return Module.HEAPU8[address + offset];
+}
+
+function u16(address, offset = 0) {
+	return Module.HEAPU16[(address + offset) >> 1];
 }
  
 function u32(address, offset = 0) {
@@ -517,6 +518,17 @@ function editWat(wat) {
 	}
 
 	// find vars
+
+	find(`block <ANY>
+      local.get <ANY>
+      i32.load offset=<PARAM>
+      local.tee <ANY>
+      if <ANY>
+        block <ANY>`, ['mob']);
+
+	find(`i32.store offset=<ANY>
+          local.get <ANY>
+          i32.load16_u offset=<PARAM>`, ['mobValue']);
 
 	find(`local.tee <ANY>
                       i32.load offset=<PARAM>
@@ -1097,6 +1109,9 @@ const div = fromHtml(`<div>
 				<div class="btn" data-link="https://discord.gg/JJFh7qzHDR">
 					<div stroke="Discord"></div>
 				</div>
+				<div class="btn" data-link="https://github.com/bytezeroseven/florrkit/">
+					<div stroke="Github"></div>
+				</div>
 				<div class="btn" data-link="https://zertalious.xyz">
 					<div stroke="Website"></div>
 				</div>
@@ -1274,7 +1289,8 @@ async function initServers() {
 			<option value="">All</option>
 			${mapNames.map(x => `<option value="${x}">${x}</option>`).join('\n')}
 		</select>
-	</div>`;
+	</div>
+	<div stroke="You can only switch to the same biome." style="margin: auto; text-align: center; grid-column: span 2;"></div>`;
 
 	container.querySelector('.regions').onchange = function () {
 		for (const el of container.children) {
@@ -1469,6 +1485,7 @@ function fromCamel(text){
 function Pointer(address) {
 	this.value = address;
 	this.u8 = (offset = 0) => new Pointer(Module.HEAPU8[address + offset]);
+	this.u16 = (offset = 0) => new Pointer(Module.HEAPU16[(address + offset) >> 1]);
 	this.u32 = (offset = 0) => new Pointer(Module.HEAPU32[(address + offset) >> 2]);
 	this.f32 = (offset = 0) => new Pointer(Module.HEAPF32[(address + offset) >> 2]);
 	this.f64 = (offset = 0) => new Pointer(Module.HEAPF64[(address + offset) >> 3]);

@@ -1,6 +1,8 @@
 # Florrkit
 florr.io script moment.
 
+![screenshot](https://raw.githubusercontent.com/bytezeroseven/florrkit/master/images/1.png)
+
 Install now: https://greasyfork.org/en/scripts/543264-florrkit-hitboxes-petal-particles-more-for-florr-io/
 
 ## Features:
@@ -12,7 +14,7 @@ Install now: https://greasyfork.org/en/scripts/543264-florrkit-hitboxes-petal-pa
 - Server selector
 - Get mob/player data (for scripters)
 - Disable crafting (for gamble addicts)
-- Hide chat bubbles.
+- Hide chat bubbles
 
 ## Credits
 Created by Zertalious.
