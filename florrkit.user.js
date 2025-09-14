@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Florrkit - Hitboxes, infinite zoom, particles & more for florr.io
 // @namespace    http://tampermonkey.net/
-// @version      0.6.4
+// @version      0.6.5
 // @description  Hitboxes, petal particles, inventory rarity counter, unlock all petals, server selector, get entity position, disable crafting, infinite zooming & more for florr.io
 // @author       zertalious
 // @match        https://florr.io/*
@@ -19,7 +19,7 @@ function onGameObjects(objects) {
 	Use this function to access game objects in your view.
 	Might be handy for creating mob alerts or self-playing bots.
 
-	[{ type, x, y, size, guild, level, rarity, mob }]
+	[{ type, x, y, size, health, shield, guild, level, rarity, mob }]
 
 	*/
 
@@ -295,8 +295,8 @@ const FlorrkitImports = {
 	drawCircle(world, entity, layer) {
 		if (layer === 8) return; // petal drops
 
-		/*const isDead = u8(u32(entity, WasmVars.isDead), WasmVars.isDeadValue) === 1;
-		if (isDead) return;*/
+		const isDead = u8(u32(entity, WasmVars.isDead), WasmVars.isDeadValue) === 1;
+		if (isDead) return;
 
 		const pos = u32(u32(u32(entity, WasmVars.object)), WasmVars.pos);
 		const x = f64(pos, WasmVars.xValue);
@@ -305,39 +305,45 @@ const FlorrkitImports = {
 		const size = f32(u32(entity, WasmVars.object), WasmVars.sizeValue);
 
 		const healthBar = u32(u32(u32(entity, WasmVars.object)), WasmVars.healthBar);
-		const healthBarTextCount = u8(healthBar, WasmVars.healthBarTextCount);
-
 		const playerRarity = u32(u32(u32(entity, WasmVars.object)), WasmVars.playerRarity);
 
-		const texts = entityTexts[healthBar];
-		if (texts && texts.length > 0) {
-			const data = {
-				type: 'unknown', 
-				x, 
-				y, 
-				size
-			};
+		if (healthBar > 0) {
+			const healthBarTextCount = u8(healthBar, WasmVars.healthBarTextCount);
+			const health = u8(healthBar, WasmVars.healthValue) / 255;
+			const shield = u8(healthBar, WasmVars.shieldValue) / 255; // i think this is wrong
 
-			if (playerRarity > 0) {
-				data.type = 'player';
-				data.rarity = u8(playerRarity, WasmVars.playerRarityValue);
+			const texts = entityTexts[healthBar];
+			if (texts && texts.length > 0) {
+				const data = {
+					type: 'unknown', 
+					x, 
+					y, 
+					size, 
+					health, 
+					shield
+				};
 
-				if (texts.length === 2) {
-					[data.username, data.level] = texts;
+				if (playerRarity > 0) {
+					data.type = 'player';
+					data.rarity = u8(playerRarity, WasmVars.playerRarityValue);
+
+					if (texts.length === 2) {
+						[data.username, data.level] = texts;
+					} else {
+						[data.username, data.guild, data.level] = texts;
+					}
+
+					data.level = parseInt(data.level.split(' ')[1]);
 				} else {
-					[data.username, data.guild, data.level] = texts;
+					data.type = 'mob';
+					[data.mob, data.rarity] = texts;
+
+					const n = rarityIds[data.rarity]
+					if (n !== undefined) data.rarity = n;
 				}
 
-				data.level = parseInt(data.level.split(' ')[1]);
-			} else {
-				data.type = 'mob';
-				[data.mob, data.rarity] = texts;
-
-				const n = rarityIds[data.rarity]
-				if (n !== undefined) data.rarity = n;
+				objects.push(data);
 			}
-
-			objects.push(data);
 		}
 
 		if (!settings.showHitbox) return;
@@ -406,6 +412,10 @@ ProxyFunction(CTX, 'clearRect', ctx => {
 		objects = [];
 		craftBoard = null;
 	}
+});
+
+ProxyFunction(CTX, 'fillText', (ctx, args) => {
+	if (texts) texts.push(args[0]);
 });
 
 function u8(address, offset = 0) {
@@ -485,6 +495,9 @@ function editWat(wat) {
 		const matches = toRegex(x).exec(wat);
 		if (!matches) throw new Error('not found: ' + keys);
 
+		console.log(keys);
+		console.log(matches[0]);
+
 		for (let i = 1; i < matches.length; i++) {
 			const key = keys[i - 1];
 			let value = matches[i];
@@ -560,22 +573,30 @@ function editWat(wat) {
                 local.tee <ANY>
                 i32.load8_u offset=<PARAM>`, ['healthBar', 'healthBarTextCount']);
 
+	find(`i32.load8_u offset=<PARAM>
+    f64.convert_i32_u
+    f64.const 0x1.fep+7 (;=255;)
+    f64.div
+    f32.demote_f64
+    f32.store
+    local.get <ANY>
+    local.get <ANY>
+    i32.load8_u offset=<PARAM>
+    f64.convert_i32_u
+    f64.const 0x1.fep+7 (;=255;)`, ['healthValue', 'shieldValue']);
+
 	find(`end
                     local.get <ANY>
                     local.get <PARAM>
                     local.get <ANY>
                     i32.const 255`, ['worldVar']);
 
-	/*find(`block <ANY
+	find(`local.tee <ANY>
+            i32.load offset=<PARAM>
+            local.tee <ANY>
+            if $I156
               local.get <ANY>
-              i32.load offset=<ANY>
-              local.tee <ANY>
-              i32.load offset=<PARAM>
-              local.tee <ANY>
-              if <ANY>
-                local.get <ANY>
-                i32.load8_u offset=<PARAM>
-                i32.const 2`, ['isDead', 'isDeadValue']);*/
+              i32.load8_u offset=<PARAM>`, ['isDead', 'isDeadValue']);
 
 	find(`i32.const 8
       i32.shr_u
@@ -1446,6 +1467,7 @@ function fromCamel(text){
 
 // maybe use in future
 function Pointer(address) {
+	this.value = address;
 	this.u8 = (offset = 0) => new Pointer(Module.HEAPU8[address + offset]);
 	this.u32 = (offset = 0) => new Pointer(Module.HEAPU32[(address + offset) >> 2]);
 	this.f32 = (offset = 0) => new Pointer(Module.HEAPF32[(address + offset) >> 2]);

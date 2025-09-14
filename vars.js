@@ -12,6 +12,8 @@ function editWat(wat) {
 		const matches = toRegex(x).exec(wat);
 		if (!matches) throw new Error('not found: ' + keys);
 
+		console.log(keys, '\n' + matches[0])
+
 		for (let i = 1; i < matches.length; i++) {
 			const key = keys[i - 1];
 			let value = matches[i];
@@ -87,22 +89,30 @@ function editWat(wat) {
                 local.tee <ANY>
                 i32.load8_u offset=<PARAM>`, ['healthBar', 'healthBarTextCount']);
 
+	find(`i32.load8_u offset=<PARAM>
+    f64.convert_i32_u
+    f64.const 0x1.fep+7 (;=255;)
+    f64.div
+    f32.demote_f64
+    f32.store
+    local.get <ANY>
+    local.get <ANY>
+    i32.load8_u offset=<PARAM>
+    f64.convert_i32_u
+    f64.const 0x1.fep+7 (;=255;)`, ['healthValue', 'shieldValue']);
+
 	find(`end
                     local.get <ANY>
                     local.get <PARAM>
                     local.get <ANY>
                     i32.const 255`, ['worldVar']);
 
-	/*find(`block <ANY
+	find(`local.tee <ANY>
+            i32.load offset=<PARAM>
+            local.tee <ANY>
+            if $I156
               local.get <ANY>
-              i32.load offset=<ANY>
-              local.tee <ANY>
-              i32.load offset=<PARAM>
-              local.tee <ANY>
-              if <ANY>
-                local.get <ANY>
-                i32.load8_u offset=<PARAM>
-                i32.const 2`, ['isDead', 'isDeadValue']);*/
+              i32.load8_u offset=<PARAM>`, ['isDead', 'isDeadValue']);
 
 	find(`i32.const 8
       i32.shr_u
