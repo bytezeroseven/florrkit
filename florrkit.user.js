@@ -13,6 +13,10 @@
 // @run-at       document-start
 // ==/UserScript==
 
+CanvasRenderingContext2D.prototype.scale2 = function (f) {
+	this.scale(f, f);
+}
+
 function onGameObjects(objects) {
 	/* 
 
@@ -30,7 +34,7 @@ function onGameObjects(objects) {
 
 	*/
 
-	// console.log(objects)
+	// console.log(objects);
 }
 
 HTMLElement.prototype.insertBefore = new Proxy(HTMLElement.prototype.insertBefore, {
@@ -405,6 +409,8 @@ ProxyFunction(CTX, 'clearRect', ctx => {
 	if (ctx.canvas === canvas) {
 		if (typeof onGameObjects === 'function') onGameObjects(objects);
 
+		minimapUI.draw();
+
 		entityTexts = {};
 		objects = [];
 		craftBoard = null;
@@ -420,13 +426,14 @@ function u8(address, offset = 0) {
 }
 
 function u16(address, offset = 0) {
-	return Module.HEAPU16[(address + offset) >> 1];
+	const n = address + offset;
+	return Module.HEAPU8[n] | (Module.HEAPU8[n + 1] << 8);
 }
- 
+
 function u32(address, offset = 0) {
 	return Module.HEAPU32[(address + offset) >> 2];
 }
- 
+
 function f32(address, offset = 0, value) {
 	if (value === undefined) {
 		return Module.HEAPF32[(address + offset) >> 2];	
@@ -434,7 +441,7 @@ function f32(address, offset = 0, value) {
 		Module.HEAPF32[(address + offset) >> 2] = value;
 	}
 }
- 
+
 function f64(address, offset = 0) {
 	return Module.HEAPF64[(address + offset) >> 3];
 }
@@ -769,7 +776,8 @@ let hitboxSize = GM_getValue('hitboxSize', 2);
 
 const Icons = {
 	settings: `<svg height="800px" width="800px" version="1.1" id="Capa_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 46.937 46.937" xml:space="preserve"> <g> <path style="fill:#fff;" d="M35.639,20.94c0,0,3.321-2.927,5.753-6.389c2.748-3.863,5.187-8.821,5.187-8.821 c0.516-1.614,0.607-2.964-0.63-3.852l-1.656-1.19c-1.237-0.891-2.602-0.336-3.852,0.627c0,0-4.085,3.948-6.771,7.684 c-2.686,3.734-4.168,7.529-4.168,7.529c-0.417,1.227-0.542,2.388,0.059,3.259l-0.592,0.839c-1.071-0.826-2.159-1.554-3.206-2.152 c-3.308-1.892-5.93-3.682-5.309-5.5l1.125-3.29c0.369-1.083-1.329-4.975-2.669-6.314C18.464,2.925,18,2.566,17.579,2.288 c-0.792-0.522-2.892-1.202-4.653-1.058c-1.763,0.144-3.437,0.473-3.688,0.675C9.071,2.041,8.962,2.202,8.92,2.382 c-0.077,0.323,0.068,0.69,0.415,1.034l3.03,3.02c1.066,1.072,1.063,2.815-0.005,3.886l-3.246,3.246 c-0.516,0.515-1.205,0.799-1.937,0.799c-0.741,0-1.432-0.285-1.951-0.806l-3.017-3.018c-0.347-0.345-0.713-0.492-1.036-0.416 c-0.179,0.043-0.339,0.152-0.473,0.32c-0.202,0.25-0.532,1.923-0.677,3.685c-0.145,1.763,0.433,3.854,0.874,4.636 c0.442,0.78,2.219,2.381,4.069,3.181c1.448,0.624,2.929,1.035,3.503,0.84c0,0,1.475-0.503,3.293-1.123 c1.819-0.621,3.843,2.156,5.951,5.614c0.958,1.573,2.126,3.157,3.419,4.448l-8.054,11.409c-0.637,0.902-0.422,2.15,0.48,2.787 c0.351,0.247,0.753,0.366,1.151,0.366c0.628,0,1.246-0.295,1.636-0.847l7.885-11.169c0.737,0.561,1.435,1.084,2.071,1.553 c2.175,1.604,3.98,2.932,3.974,3.048c-0.004,0.07-0.008,0.141-0.008,0.212c0,4.202,3.408,7.611,7.61,7.611 c4.203,0,7.613-3.409,7.613-7.611c0-4.204-3.408-7.611-7.61-7.611c-0.072,0-0.142,0.003-0.212,0.009 c-0.117,0.007-1.126-2.277-2.867-4.737c-0.75-1.06-1.696-2.229-2.839-3.425l0.935-1.324C33.796,22.092,34.72,21.634,35.639,20.94z M35.06,36.266c0.752-0.755,1.752-1.168,2.82-1.168c2.197,0,3.986,1.788,3.986,3.987c0,2.2-1.79,3.989-3.986,3.989 c-2.203,0-3.989-1.789-3.989-3.989C33.891,38.02,34.303,37.017,35.06,36.266z"/> </g> </svg>`, 
-	map: `<svg width="800px" height="800px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M2.43627 5.14686C2 5.64345 2 6.49488 2 8.19773V17.591C2 18.797 2 19.4 2.3146 19.854C2.62919 20.3079 3.17921 20.4986 4.27924 20.88L5.57343 21.3286C6.27436 21.5717 6.81371 21.7586 7.26633 21.879C7.5616 21.9576 7.83333 21.7258 7.83333 21.4203V6.2701C7.83333 6.02118 7.64964 5.81111 7.40837 5.74991C7.01914 5.65118 6.55127 5.48897 5.91002 5.26666C4.35676 4.72817 3.58014 4.45893 2.98922 4.73235C2.77941 4.82942 2.59116 4.97054 2.43627 5.14686Z" fill="#fff"/> <path d="M12.6204 3.48096L11.0844 4.54596C10.5287 4.93124 10.1215 5.2136 9.77375 5.41491C9.60895 5.51032 9.5 5.68291 9.5 5.87334V20.9203C9.5 21.2909 9.88398 21.5222 10.1962 21.3225C10.5312 21.1082 10.9149 20.8422 11.3796 20.5199L12.9156 19.4549C13.4712 19.0697 13.8785 18.7873 14.2262 18.586C14.3911 18.4906 14.5 18.318 14.5 18.1276V3.08063C14.5 2.71004 14.116 2.47866 13.8038 2.67836C13.4688 2.89271 13.0851 3.15874 12.6204 3.48096Z" fill="#fff"/> <path d="M19.7208 3.12093L18.4266 2.67226C17.7256 2.42923 17.1863 2.24228 16.7337 2.12187C16.4384 2.04333 16.1667 2.2751 16.1667 2.58064V17.7308C16.1667 17.9797 16.3504 18.1898 16.5916 18.251C16.9809 18.3497 17.4488 18.5119 18.09 18.7342C19.6432 19.2727 20.4199 19.542 21.0108 19.2686C21.2206 19.1715 21.4088 19.0304 21.5637 18.854C22 18.3575 22 17.506 22 15.8032V6.40988C22 5.2039 22 4.60091 21.6854 4.14695C21.3708 3.69298 20.8208 3.5023 19.7208 3.12093Z" fill="#fff"/> </svg>`
+	map: `<svg width="800px" height="800px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M2.43627 5.14686C2 5.64345 2 6.49488 2 8.19773V17.591C2 18.797 2 19.4 2.3146 19.854C2.62919 20.3079 3.17921 20.4986 4.27924 20.88L5.57343 21.3286C6.27436 21.5717 6.81371 21.7586 7.26633 21.879C7.5616 21.9576 7.83333 21.7258 7.83333 21.4203V6.2701C7.83333 6.02118 7.64964 5.81111 7.40837 5.74991C7.01914 5.65118 6.55127 5.48897 5.91002 5.26666C4.35676 4.72817 3.58014 4.45893 2.98922 4.73235C2.77941 4.82942 2.59116 4.97054 2.43627 5.14686Z" fill="#fff"/> <path d="M12.6204 3.48096L11.0844 4.54596C10.5287 4.93124 10.1215 5.2136 9.77375 5.41491C9.60895 5.51032 9.5 5.68291 9.5 5.87334V20.9203C9.5 21.2909 9.88398 21.5222 10.1962 21.3225C10.5312 21.1082 10.9149 20.8422 11.3796 20.5199L12.9156 19.4549C13.4712 19.0697 13.8785 18.7873 14.2262 18.586C14.3911 18.4906 14.5 18.318 14.5 18.1276V3.08063C14.5 2.71004 14.116 2.47866 13.8038 2.67836C13.4688 2.89271 13.0851 3.15874 12.6204 3.48096Z" fill="#fff"/> <path d="M19.7208 3.12093L18.4266 2.67226C17.7256 2.42923 17.1863 2.24228 16.7337 2.12187C16.4384 2.04333 16.1667 2.2751 16.1667 2.58064V17.7308C16.1667 17.9797 16.3504 18.1898 16.5916 18.251C16.9809 18.3497 17.4488 18.5119 18.09 18.7342C19.6432 19.2727 20.4199 19.542 21.0108 19.2686C21.2206 19.1715 21.4088 19.0304 21.5637 18.854C22 18.3575 22 17.506 22 15.8032V6.40988C22 5.2039 22 4.60091 21.6854 4.14695C21.3708 3.69298 20.8208 3.5023 19.7208 3.12093Z" fill="#fff"/> </svg>`, 
+	compass: `<svg width="800px" height="800px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"> <path d="M12 14C13.1046 14 14 13.1046 14 12C14 10.8954 13.1046 10 12 10C10.8954 10 10 10.8954 10 12C10 13.1046 10.8954 14 12 14Z" fill="#fff"/> <path fill-rule="evenodd" clip-rule="evenodd" d="M12 1C5.92487 1 1 5.92487 1 12C1 18.0751 5.92487 23 12 23C18.0751 23 23 18.0751 23 12C23 5.92487 18.0751 1 12 1ZM17.1887 8.07625C17.3085 7.71692 17.215 7.32075 16.9471 7.05292C16.6793 6.78509 16.2831 6.69156 15.9238 6.81134L9.56381 8.93134C9.2652 9.03088 9.03089 9.26519 8.93135 9.5638L6.81135 15.9238C6.69158 16.2831 6.7851 16.6793 7.05293 16.9471C7.32076 17.215 7.71693 17.3085 8.07626 17.1887L14.4363 15.0687C14.7349 14.9692 14.9692 14.7349 15.0687 14.4363L17.1887 8.07625Z" fill="#fff"/> </svg>`
 };
 
 const div = fromHtml(`<div>
@@ -1078,13 +1086,19 @@ const div = fromHtml(`<div>
 		align-items: center;
 	}
 
+	.minimap, .minimap-btn {
+		background: #60c432;
+	}
+
+	.minimap canvas {
+		border-radius: 5px;
+		background: rgba(0, 0, 0, 0.1);
+	}
+
 </style>
 
 <div class="overlay">
 	<div class="dialog settings">
-		<div class="btn icon-btn close-btn">
-			<div class="cross"></div>
-		</div>
 		<div class="dialog-header" stroke="Florrkit v${GM_info.script.version}"></div>
 		<div class="dialog-content">
 			<div class="row">
@@ -1123,14 +1137,12 @@ const div = fromHtml(`<div>
 	</div>
 
 	<div class="dialog servers">
-		<div class="btn icon-btn close-btn">
-			<div class="cross"></div>
-		</div>
 		<div class="dialog-header" stroke="Servers"></div>
 		<div class="dialog-content"></div>
 	</div>
 
 	<div class="btns">
+		<div class="btn icon-btn minimap-btn">${Icons.compass}</div>
 		<div class="btn icon-btn servers-btn">${Icons.map}</div>
 		<div class="btn icon-btn settings-btn" style="background: #fd6a6a">${Icons.settings}</div>
 	</div>
@@ -1156,7 +1168,7 @@ function updateZoomValue() {
 	zoomValueEl.setAttribute('stroke', nZoom.toFixed(1) + 'x');
 }
 
-document.onwheel = function (event) {
+function onWheel(event) {
 	if (settings.scrollZooming) {
 		const f = event.deltaY < 0 ? 0.9 : 1.1;
 		nZoom *= f;
@@ -1167,6 +1179,77 @@ document.onwheel = function (event) {
 }
 
 const overlayEl = div.querySelector('.overlay');
+
+const minimapUI = new MinimapUI();
+
+function MinimapUI() {
+	const el = fromHtml(`<div class="dialog minimap">
+		<div class="dialog-header" stroke="Minimap"></div>
+		<div class="dialog-content">
+			<canvas></canvas>
+		</div>
+	</div>`);
+	overlayEl.appendChild(el);
+
+	const coordEl = el.querySelector('.coord');
+
+	const SIZE = 400;
+	const MAP_SIZE = 64e3;
+	
+	const canvas = el.querySelector('canvas');
+	canvas.style.width = canvas.style.height = SIZE + 'px';
+	canvas.width = canvas.height = SIZE * window.devicePixelRatio;
+	
+	const ctx = canvas.getContext('2d');
+
+	const images = {};
+
+	const grid = Grid();
+
+	function draw() {
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+		ctx.fillStyle = grid;
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+		ctx.save();
+		ctx.scale2(canvas.height / SIZE);
+
+		for (const entity of objects) {
+			if (entity.type !== 'mob') continue;
+
+			ctx.save();
+			ctx.translate(entity.x / MAP_SIZE * SIZE, entity.y / MAP_SIZE * SIZE);
+			ctx.scale2((5 + Math.pow(entity.size, 0.5)) / 50);
+
+			ctx.beginPath();
+			ctx.arc(0, 0, 50, 0, PI2);
+			ctx.fillStyle = rarities[entity.rarity][1];
+			ctx.fill();
+			ctx.clip();
+			ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+			ctx.lineWidth = 15;
+			ctx.stroke();
+
+			let image = images[entity.mobId];
+			if (!image) {
+				image = new Image();
+				image.src = `https://florr.io/mobs/${entity.mobId}.svg`;
+				images[entity.mobId] = image;
+			}
+
+			if (image.width > 0) {
+				ctx.drawImage(image, -50, -50, 100, 100);
+			}
+
+			ctx.restore();
+		}
+
+		ctx.restore();
+	}
+
+	this.draw = draw;
+}
 
 const hitboxColorEl = div.querySelector('.hitbox-color');
 hitboxColorEl.onchange = function () {
@@ -1251,6 +1334,11 @@ const settingsBtnEl = div.querySelector('.settings-btn');
 new Dialog(
 	div.querySelector('.settings'),
 	settingsBtnEl
+);
+
+new Dialog(
+	div.querySelector('.minimap'),
+	div.querySelector('.minimap-btn')
 );
 
 function setClass(el, cls, v) {
@@ -1394,7 +1482,7 @@ function Dialog(el, btnEl) {
 	dialogs.push(this);
 }
 
-function Grid(size = 20) {
+function Grid(size = 16) {
 	const canvas = document.createElement('canvas');
 	canvas.width = canvas.height = size;
 	const ctx = canvas.getContext('2d');
@@ -1437,6 +1525,8 @@ const interval = setInterval(() => {
 
 		canvas = document.getElementById('canvas');
 		ctx = canvas.getContext('2d');
+
+		canvas.addEventListener('wheel', onWheel);
 
 		canvas.addEventListener('click', () => {
 			for (const dialog of dialogs) {
